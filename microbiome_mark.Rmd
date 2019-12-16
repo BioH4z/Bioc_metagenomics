@@ -90,7 +90,7 @@ names(derepFs) <- sampleNames
 names(derepRs) <- sampleNames
 ```
 
-Dereplication combines all identical sequencing reads into into “unique sequences” with a corresponding “abundance”: the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
+Dereplication combines all identical sequencing reads into into 'unique sequences' with a corresponding 'abundance': the number of reads with that unique sequence. Dereplication substantially reduces computation time by eliminating redundant comparisons.
 
 The DADA2 method relies on a parameterized model of substitution errors to distinguish sequencing errors from real biological variation. Because error rates can (and often do) vary substantially between sequencing runs and PCR protocols, the model parameters can be discovered from the data itself using a form of unsupervised learning in which sample inference is alternated with parameter estimation until both are jointly consistent.
 
@@ -206,5 +206,53 @@ sRare #gives an "expected"rarefied" number of species (not obs) if only 2518 ind
 rarecurve(seqtabNoC, col = "blue") # produces rarefaction curves # squares are the samples' name at observed space. To "rarefy" a larger site, follow the rarefaction curve until the curve corresponds with the lesser site obs. This gives you rarefied species richness
 ```
 
+**Loading the metafile**
+
+
+
+```{r metafile, echo=T}
+samdf <- read.csv("https://raw.githubusercontent.com/spholmes/F1000_workflow/master/data/MIMARKS_Data_combined.csv",header=TRUE)
+samdf$SampleID <- paste0(gsub("00", "", samdf$host_subject_id), "D", samdf$age-21)
+samdf <- samdf[!duplicated(samdf$SampleID),] # Remove dupicate entries for reverse reads
+rownames(seqtabAll) <- gsub("124", "125", rownames(seqtabAll)) # Fix discrepancy
+all(rownames(seqtabAll) %in% samdf$SampleID) # TRUE
+
+rownames(samdf) <- samdf$SampleID
+keep.cols <- c("collection_date", "biome", "target_gene", "target_subfragment",
+               "host_common_name", "host_subject_id", "age", "sex", "body_product", "tot_mass",
+               "diet", "family_relationship", "genotype", "SampleID") 
+samdf <- samdf[rownames(seqtabAll), keep.cols]
+```
+
+
+**The otu-table**
+
+It's time to associate the sequences with the taxa
+```{r otu_table, eco=T}
+library("phyloseq") #We will use this package just for the occasion
+ps <- phyloseq(otu_table(seqtabNoC, taxa_are_rows=FALSE), sample_data(samdf),tax_table(taxTab))
+ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove mock sample
+```
+
+
+
+**Relative abundance**
+
+Now, we'll calculate the relative abundance of each taxa in each sample.
+```{r rel_abundance, echo=T}
+rel_abund <- t(apply(otu_table(ps), 1, function(x) x / sum(x)))
+
+x=as.data.frame(tax_table(ps))
+prova=as.data.frame(t(rel_abund))
+
+finale=merge(x,prova, by="row.names",all.x=TRUE)
+finale2=aggregate(finale[, 8:length(finale)], list(finale$Phylum), mean)
+
+library("tidyr") 
+finale3=gather(finale2, key = "Samples", value = "Frequency", -Group.1)
+ggplot(finale3, aes(fill=Group.1, y=Frequency, x=Samples)) + 
+  geom_bar(position="fill", stat="identity") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
 
 
